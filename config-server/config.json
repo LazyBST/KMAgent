@@ -1,0 +1,81 @@
+{
+  "extensions": {
+    "zpages": {
+      "endpoint": "localhost:55679"
+    }
+  },
+  "receivers": {
+    "otlp": {
+      "protocols": {
+        "grpc": {
+          "endpoint": "localhost:4317"
+        },
+        "http": {
+          "endpoint": "localhost:4318"
+        }
+      }
+    },
+    "filelog": {
+      "include": ["testdata/simple.log"],
+      "start_at": "beginning",
+      "operators": [
+        {
+          "type": "regex_parser",
+          "regex": "^(?P<time>\\d{4}-\\d{2}-\\d{2}) (?P<sev>[A-Z]*) (?P<msg>.*)$",
+          "timestamp": {
+            "parse_from": "attributes.time",
+            "layout": "%Y-%m-%d"
+          },
+          "severity": {
+            "parse_from": "attributes.sev"
+          }
+        }
+      ]
+    },
+    "httpcheck": {
+      "targets": [
+        {
+          "endpoint": "https://www.google.com/",
+          "method": "GET",
+          "headers": {
+            "test-header": "test-value"
+          }
+        }
+      ],
+      "collection_interval": "10s"
+    }
+  },
+  "processors": {
+    "batch": {},
+    "memory_limiter": {
+      "limit_mib": 1536,
+      "spike_limit_mib": 512,
+      "check_interval": "5s"
+    }
+  },
+  "exporters": {
+    "debug": {
+      "verbosity": "detailed"
+    }
+  },
+  "service": {
+    "pipelines": {
+      "traces": {
+        "receivers": ["otlp"],
+        "processors": ["memory_limiter", "batch"],
+        "exporters": ["debug"]
+      },
+      "metrics": {
+        "receivers": ["otlp", "httpcheck"],
+        "processors": ["memory_limiter", "batch"],
+        "exporters": ["debug"]
+      },
+      "logs": {
+        "receivers": ["filelog"],
+        "processors": ["memory_limiter", "batch"],
+        "exporters": ["debug"]
+      }
+    },
+    "extensions": ["zpages"]
+  }
+}
