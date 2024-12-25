@@ -5,22 +5,16 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"io"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
+	"runtime"
 	"time"
 
-	"go.opentelemetry.io/collector/component"
-	"go.opentelemetry.io/collector/confmap"
-	envprovider "go.opentelemetry.io/collector/confmap/provider/envprovider"
-	fileprovider "go.opentelemetry.io/collector/confmap/provider/fileprovider"
-	httpprovider "go.opentelemetry.io/collector/confmap/provider/httpprovider"
-	httpsprovider "go.opentelemetry.io/collector/confmap/provider/httpsprovider"
-	yamlprovider "go.opentelemetry.io/collector/confmap/provider/yamlprovider"
+	"github.com/lazybst/kmagent/pkg/utils"
 	"go.opentelemetry.io/collector/otelcol"
 	"gopkg.in/yaml.v2"
 )
@@ -28,13 +22,39 @@ import (
 var (
 	CONFIG_PATH       = "/tmp/otelcol.yaml"
 	CONFIG_SVC_ORIGIN = "http://localhost:3000"
+	RUN_AS_SERVICE    = false
 )
 
 var collector *otelcol.Collector
 
 func main() {
-	CONFIG_PATH, CONFIG_SVC_ORIGIN = getEnvFlags()
+	CONFIG_PATH, CONFIG_SVC_ORIGIN, RUN_AS_SERVICE = utils.GetEnvFlags()
 
+	if RUN_AS_SERVICE {
+		initAgent()
+		return
+	}
+
+	runAsSystemService()
+}
+
+func runAsSystemService() {
+
+	var flags = []string{
+		"-" + utils.RUN_AS_SERVICE_FLAG + "=" + utils.BoolToStr(true),
+		"-" + utils.CONFIG_FILE_PATH_FLAG + "=" + CONFIG_PATH,
+		"-" + utils.CONFIG_SERVICE_ORIGIN_URL_FLAG + "=" + CONFIG_SVC_ORIGIN,
+	}
+
+	switch runtime.GOOS {
+	case "darwin":
+		utils.StartServiceForDarwin(flags)
+	case "linux":
+		utils.StartServiceForLinux(flags)
+	}
+}
+
+func initAgent() {
 	isNewConfigCh := make(chan bool, 1)
 
 	go listenForInterrupt()
@@ -65,7 +85,7 @@ func listenForInterrupt() {
 }
 
 func checkForConfigAndStartCollector(isNewConfigCh <-chan bool) {
-	if isConfigExists(CONFIG_PATH) && collector == nil {
+	if utils.IsConfigExists(CONFIG_PATH) && collector == nil {
 		startCollector()
 		sendStatusUpdate(CONFIG_SVC_ORIGIN)
 	}
@@ -75,23 +95,6 @@ func checkForConfigAndStartCollector(isNewConfigCh <-chan bool) {
 		startCollector()
 		sendStatusUpdate(CONFIG_SVC_ORIGIN)
 	}
-}
-
-func runInteractive(params otelcol.CollectorSettings) {
-	go func(params otelcol.CollectorSettings) {
-		var err error
-		collector, err = otelcol.NewCollector(params)
-
-		if err != nil {
-			log.Fatalf("collector instance creation failed with error: %v", err)
-		}
-
-		err = collector.Run(context.Background())
-
-		if err != nil {
-			log.Fatalf("collector server run finished with error: %v", err)
-		}
-	}(params)
 }
 
 func pollForConfig(configEndpoint string, isNewConfigCh chan<- bool) {
@@ -113,7 +116,7 @@ func pollForConfig(configEndpoint string, isNewConfigCh chan<- bool) {
 			continue
 		}
 
-		yamlData, err := jsonToYaml(jsonData)
+		yamlData, err := utils.JsonToYaml(jsonData)
 		if err != nil {
 			log.Println("Error converting JSON to YAML:", err)
 			time.Sleep(10 * time.Second)
@@ -128,7 +131,7 @@ func pollForConfig(configEndpoint string, isNewConfigCh chan<- bool) {
 
 		log.Println("new config detected")
 
-		err = saveYamlToFile(yamlData, CONFIG_PATH)
+		err = utils.SaveYamlToFile(yamlData, CONFIG_PATH)
 		if err != nil {
 			log.Println("Error saving config file:", err)
 			continue
@@ -138,40 +141,6 @@ func pollForConfig(configEndpoint string, isNewConfigCh chan<- bool) {
 
 		time.Sleep(10 * time.Second)
 	}
-}
-
-func startCollector() {
-	if collector != nil {
-		collector.Shutdown()
-		collector = nil
-		log.Println("old collector instance stopped")
-	}
-
-	info := component.BuildInfo{
-		Command:     "kmagent",
-		Description: "Agent-as-collector POC",
-		Version:     "0.0.1",
-	}
-
-	set := otelcol.CollectorSettings{
-		BuildInfo: info,
-		Factories: components,
-		ConfigProviderSettings: otelcol.ConfigProviderSettings{
-			ResolverSettings: confmap.ResolverSettings{
-				URIs: []string{CONFIG_PATH},
-				ProviderFactories: []confmap.ProviderFactory{
-					envprovider.NewFactory(),
-					fileprovider.NewFactory(),
-					httpprovider.NewFactory(),
-					httpsprovider.NewFactory(),
-					yamlprovider.NewFactory(),
-				},
-			},
-		},
-	}
-
-	runInteractive(set)
-	log.Println("collector started")
 }
 
 func isDiffConfig(newConfig []byte, prevConfigFile string) bool {
@@ -193,7 +162,7 @@ func isDiffConfig(newConfig []byte, prevConfigFile string) bool {
 		return false
 	}
 
-	return !checkMapEquality(oldConfigMp, newConfigMp)
+	return !utils.CheckMapEquality(oldConfigMp, newConfigMp)
 }
 
 func pollStatus(url string) {
