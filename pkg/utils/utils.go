@@ -3,13 +3,10 @@ package utils
 import (
 	"encoding/json"
 	"flag"
-	"fmt"
-	"html/template"
 	"log"
 	"os"
 	"reflect"
 
-	"github.com/lazybst/kmagent/pkg/templates"
 	"gopkg.in/yaml.v2"
 )
 
@@ -122,27 +119,6 @@ func IsConfigExists(configPath string) bool {
 	}
 
 	return true
-}
-
-func CreateServiceFile(config ServiceConfig, serviceName string) error {
-	t := template.New("service")
-	t, err := t.Parse(templates.ServiceTemplate)
-	if err != nil {
-		return err
-	}
-
-	filePath := fmt.Sprintf("/etc/systemd/system/%s.service", serviceName)
-	file, err := os.Create(filePath)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-
-	if err := t.Execute(file, config); err != nil {
-		return err
-	}
-
-	return nil
 }
 
 func getExecPath() string {
