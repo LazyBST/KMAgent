@@ -4,19 +4,12 @@
 package main
 
 import (
-	"bytes"
-	"encoding/json"
-	"io"
+	"fmt"
 	"log"
-	"net/http"
-	"os"
-	"os/signal"
-	"runtime"
-	"time"
 
+	"github.com/kardianos/service"
 	"github.com/lazybst/kmagent/pkg/utils"
 	"go.opentelemetry.io/collector/otelcol"
-	"gopkg.in/yaml.v2"
 )
 
 var (
@@ -30,163 +23,25 @@ var collector *otelcol.Collector
 func main() {
 	CONFIG_PATH, CONFIG_SVC_ORIGIN, RUN_AS_SERVICE = utils.GetEnvFlags()
 
-	if RUN_AS_SERVICE {
-		initAgent()
-		return
+	svcConfig := &service.Config{
+		Name: "kmagent",
+		Arguments: []string{
+			fmt.Sprintf("-%s=%s", utils.CONFIG_FILE_PATH_FLAG, CONFIG_PATH),
+			fmt.Sprintf("-%s=%s", utils.CONFIG_SERVICE_ORIGIN_URL_FLAG, CONFIG_SVC_ORIGIN),
+		},
+		Option: service.KeyValue{
+			"UserService":  true,
+			"LogOutput":    true,
+			"LogDirectory": "/tmp",
+		},
 	}
-
-	runAsSystemService()
-}
-
-func runAsSystemService() {
-
-	var flags = []string{
-		"-" + utils.RUN_AS_SERVICE_FLAG + "=" + utils.BoolToStr(true),
-		"-" + utils.CONFIG_FILE_PATH_FLAG + "=" + CONFIG_PATH,
-		"-" + utils.CONFIG_SERVICE_ORIGIN_URL_FLAG + "=" + CONFIG_SVC_ORIGIN,
-	}
-
-	switch runtime.GOOS {
-	case "darwin":
-		utils.StartServiceForDarwin(flags)
-	case "linux":
-		utils.StartServiceForLinux(flags)
-	}
-}
-
-func initAgent() {
-	isNewConfigCh := make(chan bool, 1)
-
-	go listenForInterrupt()
-
-	go pollForConfig(CONFIG_SVC_ORIGIN+"/config", isNewConfigCh)
-	go pollStatus(CONFIG_SVC_ORIGIN + "/status")
-
-	checkForConfigAndStartCollector(isNewConfigCh)
-}
-
-func listenForInterrupt() {
-	interruptCh := make(chan os.Signal, 1)
-	signal.Notify(interruptCh, os.Interrupt)
-
-	go func(interruptCh <-chan os.Signal) {
-		for sig := range interruptCh {
-			if sig == os.Interrupt && collector != nil {
-				log.Println("Interrupt signal received, shutting down...")
-				collector.Shutdown()
-				collector = nil
-				time.Sleep(1 * time.Second)
-				os.Exit(0)
-			} else {
-				os.Exit(0)
-			}
-		}
-	}(interruptCh)
-}
-
-func checkForConfigAndStartCollector(isNewConfigCh <-chan bool) {
-	if utils.IsConfigExists(CONFIG_PATH) && collector == nil {
-		startCollector()
-		sendStatusUpdate(CONFIG_SVC_ORIGIN)
-	}
-
-	for <-isNewConfigCh {
-		log.Println("restarting collector...")
-		startCollector()
-		sendStatusUpdate(CONFIG_SVC_ORIGIN)
-	}
-}
-
-func pollForConfig(configEndpoint string, isNewConfigCh chan<- bool) {
-	for {
-		resp, err := http.Get(configEndpoint)
-
-		if err != nil {
-			log.Printf("Error getting config from %s: %v", CONFIG_SVC_ORIGIN, err)
-			time.Sleep(10 * time.Second)
-			continue
-		}
-
-		jsonData, err := io.ReadAll(resp.Body)
-		resp.Body.Close()
-
-		if err != nil {
-			log.Fatalf("Error reading response body: %v", err)
-			time.Sleep(10 * time.Second)
-			continue
-		}
-
-		yamlData, err := utils.JsonToYaml(jsonData)
-		if err != nil {
-			log.Println("Error converting JSON to YAML:", err)
-			time.Sleep(10 * time.Second)
-			continue
-		}
-
-		// if no new config detected continue
-		if !isDiffConfig(yamlData, CONFIG_PATH) {
-			time.Sleep(10 * time.Second)
-			continue
-		}
-
-		log.Println("new config detected")
-
-		err = utils.SaveYamlToFile(yamlData, CONFIG_PATH)
-		if err != nil {
-			log.Println("Error saving config file:", err)
-			continue
-		}
-
-		isNewConfigCh <- true
-
-		time.Sleep(10 * time.Second)
-	}
-}
-
-func isDiffConfig(newConfig []byte, prevConfigFile string) bool {
-	oldConfig, err := os.ReadFile(prevConfigFile)
+	agent := &agent{}
+	s, err := service.New(agent, svcConfig)
 	if err != nil {
-		log.Println("no config file found:", err)
-		return true
+		log.Fatal(err)
 	}
-
-	oldConfigMp := make(map[string]interface{})
-	newConfigMp := make(map[string]interface{})
-
-	if err = yaml.Unmarshal(oldConfig, &oldConfigMp); err != nil {
-		log.Println("Error unmarshalling old config:", err)
-		return false
-	}
-	if err = yaml.Unmarshal(newConfig, &newConfigMp); err != nil {
-		log.Println("Error unmarshalling new config:", err)
-		return false
-	}
-
-	return !utils.CheckMapEquality(oldConfigMp, newConfigMp)
-}
-
-func pollStatus(url string) {
-	for {
-		sendStatusUpdate(url)
-		time.Sleep(10 * time.Second)
-	}
-}
-
-func sendStatusUpdate(url string) {
-	if collector == nil {
-		return
-	}
-	payload := make(map[string]interface{})
-	payload["status"] = collector.GetState().String()
-
-	jsonPayload, err := json.Marshal(payload)
-
+	err = s.Run()
 	if err != nil {
-		log.Println("Error marshalling payload:", err)
-		return
-	}
-
-	if _, err := http.Post(url, "application/json", bytes.NewBuffer(jsonPayload)); err != nil {
-		log.Println("Error posting status:", err)
+		log.Fatal(err)
 	}
 }

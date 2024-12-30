@@ -64,3 +64,11 @@ func runInteractive(params otelcol.CollectorSettings) {
 		}
 	}(params)
 }
+
+func stopCollector() {
+	if collector == nil {
+		return
+	}
+
+	collector.Shutdown()
+}

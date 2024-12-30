@@ -7,6 +7,7 @@ go 1.22.0
 toolchain go1.23.4
 
 require (
+	github.com/kardianos/service v1.2.2
 	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/filelogreceiver v0.116.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/httpcheckreceiver v0.116.0
 	go.opentelemetry.io/collector/component v0.116.0
@@ -33,7 +34,6 @@ require (
 	go.opentelemetry.io/collector/receiver v0.116.0
 	go.opentelemetry.io/collector/receiver/nopreceiver v0.116.0
 	go.opentelemetry.io/collector/receiver/otlpreceiver v0.116.0
-	golang.org/x/sys v0.28.0
 	gopkg.in/yaml.v2 v2.4.0
 )
 
@@ -165,6 +165,7 @@ require (
 	go.uber.org/zap v1.27.0 // indirect
 	golang.org/x/exp v0.0.0-20240506185415-9bf2ced13842 // indirect
 	golang.org/x/net v0.32.0 // indirect
+	golang.org/x/sys v0.28.0 // indirect
 	golang.org/x/text v0.21.0 // indirect
 	gonum.org/v1/gonum v0.15.1 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20241104194629-dd2ea8efbc28 // indirect
