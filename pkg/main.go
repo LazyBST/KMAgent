@@ -8,7 +8,6 @@ import (
 	"log"
 
 	"github.com/kardianos/service"
-	"github.com/lazybst/kmagent/pkg/utils"
 	"go.opentelemetry.io/collector/otelcol"
 )
 
@@ -21,13 +20,13 @@ var (
 var collector *otelcol.Collector
 
 func main() {
-	CONFIG_PATH, CONFIG_SVC_ORIGIN, RUN_AS_SERVICE = utils.GetEnvFlags()
+	CONFIG_PATH, CONFIG_SVC_ORIGIN, RUN_AS_SERVICE = GetEnvFlags()
 
 	svcConfig := &service.Config{
 		Name: "kmagent",
 		Arguments: []string{
-			fmt.Sprintf("-%s=%s", utils.CONFIG_FILE_PATH_FLAG, CONFIG_PATH),
-			fmt.Sprintf("-%s=%s", utils.CONFIG_SERVICE_ORIGIN_URL_FLAG, CONFIG_SVC_ORIGIN),
+			fmt.Sprintf("-%s=%s", CONFIG_FILE_PATH_FLAG, CONFIG_PATH),
+			fmt.Sprintf("-%s=%s", CONFIG_SERVICE_ORIGIN_URL_FLAG, CONFIG_SVC_ORIGIN),
 		},
 		Option: service.KeyValue{
 			"UserService":  true,

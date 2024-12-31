@@ -10,29 +10,29 @@ import (
 	"time"
 
 	"github.com/kardianos/service"
-	"github.com/lazybst/kmagent/pkg/utils"
 	"gopkg.in/yaml.v2"
 )
 
 type agent struct{}
 
-func (p *agent) Start(s service.Service) error {
+func (a *agent) Start(s service.Service) error {
 	if service.Interactive() {
 		log.Print("manage")
-		return p.manage(s)
+		return a.manage(s)
 	}
 	log.Print("start")
-	go p.run()
+	go a.run()
 	return nil
 }
 
-func (p *agent) manage(s service.Service) error {
+func (a *agent) manage(s service.Service) error {
 	if status, err := s.Status(); err == service.ErrNotInstalled {
 		log.Printf("installing...")
 		if err := s.Install(); err != nil {
 			return err
 		}
 		log.Printf("installed")
+		return a.manage(s)
 	} else if err != nil {
 		return err
 	} else if status == service.StatusUnknown {
@@ -46,6 +46,7 @@ func (p *agent) manage(s service.Service) error {
 			return err
 		}
 		log.Printf("started")
+		os.Exit(0)
 	} else {
 		log.Printf("service running")
 		if err := s.Uninstall(); err == nil {
@@ -55,11 +56,11 @@ func (p *agent) manage(s service.Service) error {
 	return nil
 }
 
-func (p *agent) run() {
+func (a *agent) run() {
 	log.Println("Starting agent...")
 	initAgent()
 }
-func (p *agent) Stop(s service.Service) error {
+func (a *agent) Stop(s service.Service) error {
 	log.Print("stop")
 	stopCollector()
 	time.Sleep(100 * time.Millisecond)
@@ -77,7 +78,7 @@ func initAgent() {
 }
 
 func checkForConfigAndStartCollector(isNewConfigCh <-chan bool) {
-	if utils.IsConfigExists(CONFIG_PATH) && collector == nil {
+	if IsConfigExists(CONFIG_PATH) && collector == nil {
 		startCollector()
 		sendStatusUpdate(CONFIG_SVC_ORIGIN)
 	}
@@ -109,7 +110,7 @@ func pollForConfig(configEndpoint string, isNewConfigCh chan<- bool) {
 			continue
 		}
 
-		yamlData, err := utils.JsonToYaml(jsonData)
+		yamlData, err := JsonToYaml(jsonData)
 		if err != nil {
 			log.Println("Error converting JSON to YAML:", err)
 			time.Sleep(10 * time.Second)
@@ -124,7 +125,7 @@ func pollForConfig(configEndpoint string, isNewConfigCh chan<- bool) {
 
 		log.Println("new config detected")
 
-		err = utils.SaveYamlToFile(yamlData, CONFIG_PATH)
+		err = SaveYamlToFile(yamlData, CONFIG_PATH)
 		if err != nil {
 			log.Println("Error saving config file:", err)
 			continue
@@ -155,7 +156,7 @@ func isDiffConfig(newConfig []byte, prevConfigFile string) bool {
 		return false
 	}
 
-	return !utils.CheckMapEquality(oldConfigMp, newConfigMp)
+	return !CheckMapEquality(oldConfigMp, newConfigMp)
 }
 
 func pollStatus(url string) {
